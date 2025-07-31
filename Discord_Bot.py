@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import asyncio
 import yt_dlp
+import gspread
 
 load_dotenv(dotenv_path="./.env")
 
@@ -453,5 +454,63 @@ async def stop_playing(ctx):
         await ctx.send("재생을 멈추고 대기열을 비웠습니다.")
     else:
         await ctx.send("음성 채널에 연결해주세요.")
+        
+
+@app.command()
+async def gspreadtest(ctx):
+    """구글 스프레드시트 연결을 테스트하는 명령어"""
+    await ctx.send("구글 시트 연결 테스트를 시작할게, 잠시만...")
+
+    try:
+        # 1. 인증 및 연결 (service_account.json 파일 필요)
+        gc = gspread.service_account(filename='service_account.json')
+
+        # 2. 연결할 스프레드시트 이름 설정
+        # 🚨 여기에 네 실제 스프레드시트 파일 이름을 정확하게 적어줘
+        SPREADSHEET_NAME = "리그오브레전드 팀 구성"
+
+        sh = gc.open(SPREADSHEET_NAME)
+
+        # 3. 데이터를 가져올 워크시트 선택
+        # 🚨 시트 이름이 '시트1'이 아니라면 실제 이름으로 바꿔줘
+        worksheet = sh.worksheet("시트1")
+
+        # 4. 모든 데이터 가져오기 (첫 행은 헤더로 인식)
+        all_data = worksheet.get_all_records()
+
+        # 5. 성공 메시지와 함께 데이터 일부를 디스코드에 출력
+        if not all_data:
+            await ctx.send(f"✅ **'{SPREADSHEET_NAME}'** 시트 연결은 성공했는데, 내용이 비어있는 것 같아.")
+            return
+
+        embed = discord.Embed(
+            title=f"✅ '{SPREADSHEET_NAME}' 시트 연결 성공!",
+            description="시트에서 가져온 데이터 일부를 보여줄게.",
+            color=0x2ECC71  # 초록색
+        )
+
+        # 데이터가 너무 많으면 메시지가 잘리므로, 최대 5개만 보여주기
+        output_text = ""
+        for i, row in enumerate(all_data[:5]):
+            # 각 행의 '이름'과 '아이디'만 간추려서 보여주는 예시
+            # 🚨 실제 시트의 헤더(열 이름)에 맞게 '이름', '아이디'를 수정해
+            player_name = row.get('이름', 'N/A')
+            player_id = row.get('아이디', 'N/A')
+            output_text += f"**{i+1}. {player_name}** ({player_id})\n"
+        
+        embed.add_field(name="플레이어 목록 (최대 5명)", value=output_text, inline=False)
+        embed.set_footer(text=f"총 {len(all_data)}명의 데이터가 시트에 있어.")
+
+        await ctx.send(embed=embed)
+
+    except FileNotFoundError:
+        await ctx.send("❌ 앗, `service_account.json` 파일을 못 찾았어. 내가 알려준 대로 파일 잘 만들어서 코드랑 같은 폴더에 뒀는지 확인해봐.")
+    except gspread.exceptions.SpreadsheetNotFound:
+        await ctx.send(f"❌ **'{SPREADSHEET_NAME}'** 이라는 스프레드시트를 못 찾겠는데? 이름이 정확한지, 그리고 시트 '공유' 설정에 내 이메일({gc.auth.service_account_email})을 '편집자'로 추가했는지 확인해봐.")
+    except gspread.exceptions.WorksheetNotFound:
+        await ctx.send("❌ 이런, 스프레드시트는 찾았는데 지정된 워크시트가 없어. 코드에서 시트 이름을 제대로 적었는지 확인해줘.")
+    except Exception as e:
+        print(f"gspread 테스트 중 오류 발생: {e}")
+        await ctx.send(f"😵 뭐지? 알 수 없는 오류가 발생했어. 로그를 확인해봐.\n`{e}`")
 
 app.run(os.getenv('discord_key'))
